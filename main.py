@@ -38,6 +38,8 @@ class SpotifyGUI:
         self._viz_running = enable_visualizer
         self._meter_session = None
         self._meter_last_scan = 0.0
+        self._volume_var = tk.IntVar(value=0)
+        self._volume_updating = False
 
         self._build_ui()
         self._fit_to_content()
@@ -107,22 +109,11 @@ class SpotifyGUI:
         song_label.pack(anchor="w", pady=(6, 4), fill="x")
         artist_label.pack(anchor="w", pady=(0, 6), fill="x")
 
-        led_frame = tk.Frame(text_stack, bg="#1a1a1a", bd=2, relief="sunken")
-        led_frame.pack(anchor="w", pady=(0, 2), fill="x")
-        led_label = tk.Label(
-            led_frame,
-            textvariable=self.time_var,
-            bg="#1a1a1a",
-            fg="#7CFF6B",
-            font=("Courier New", 12, "bold"),
-            padx=6,
-            pady=2,
-            anchor="w",
-        )
-        led_label.pack(fill="x")
+        controls_row = tk.Frame(container, bg="#d6dbe6")
+        controls_row.pack(fill="x", pady=(6, 4))
 
-        controls = tk.Frame(container, bg="#d6dbe6")
-        controls.pack(anchor="center", pady=(6, 4))
+        controls = tk.Frame(controls_row, bg="#d6dbe6")
+        controls.pack(side="left", padx=8)
 
         self.prev_button = self._create_oval_button(controls, "<<", self.previous_track, width=60)
         self.play_button = self._create_oval_button(controls, "Play", self.play_pause, width=76)
@@ -131,6 +122,35 @@ class SpotifyGUI:
         self.prev_button.grid(row=0, column=0, padx=8)
         self.play_button.grid(row=0, column=1, padx=8)
         self.next_button.grid(row=0, column=2, padx=8)
+
+        volume_frame = tk.Frame(controls_row, bg="#d6dbe6")
+        volume_frame.pack(side="right", padx=8)
+        volume_label = tk.Label(
+            volume_frame,
+            text="VOL",
+            bg="#d6dbe6",
+            fg="#1b1b1b",
+            font=("Tahoma", 8, "bold"),
+        )
+        volume_label.pack(side="left", padx=(0, 6))
+        self.volume_scale = tk.Scale(
+            volume_frame,
+            from_=0,
+            to=100,
+            orient="horizontal",
+            variable=self._volume_var,
+            showvalue=False,
+            length=140,
+            command=self._on_volume_change,
+            troughcolor="#bfc7d6",
+            highlightthickness=0,
+            bg="#d6dbe6",
+            fg="#1b1b1b",
+            font=("Tahoma", 8),
+            sliderlength=16,
+            bd=0,
+        )
+        self.volume_scale.pack(side="left")
 
         if self._viz_running:
             viz_frame = tk.Frame(container, bg="#0e0f12", bd=2, relief="sunken")
@@ -157,7 +177,18 @@ class SpotifyGUI:
             padx=6,
             pady=3,
         )
-        status_label.pack(fill="x")
+        status_label.pack(side="left", fill="x", expand=True)
+        time_label = tk.Label(
+            status_bar,
+            textvariable=self.time_var,
+            bg="#c8d1e0",
+            fg="#1b1b1b",
+            font=("Tahoma", 9),
+            anchor="e",
+            padx=6,
+            pady=3,
+        )
+        time_label.pack(side="right")
 
     def _fit_to_content(self) -> None:
         self.root.update_idletasks()
@@ -264,12 +295,26 @@ class SpotifyGUI:
                 self.is_playing = playback.get("is_playing")
                 self._set_play_button_text("Pause" if self.is_playing else "Play")
                 self.set_status("Playing" if self.is_playing else "Paused")
+                self._sync_volume(playback)
         except spotipy.SpotifyException as exc:
             self.set_status(f"Error {exc.http_status}: {exc.msg}")
         except Exception as exc:
             self.set_status(f"Unexpected error: {exc}")
 
         self.root.after(1000, self.refresh)
+
+    def _sync_volume(self, playback: dict) -> None:
+        device = playback.get("device") or {}
+        volume = device.get("volume_percent")
+        if volume is None:
+            return
+        if self._volume_updating:
+            return
+        self._volume_updating = True
+        try:
+            self._volume_var.set(int(volume))
+        finally:
+            self._volume_updating = False
 
     def _get_spotify_peak(self) -> float:
         if AudioUtilities is None or IAudioMeterInformation is None:
@@ -355,6 +400,15 @@ class SpotifyGUI:
                 self.sp.start_playback()
                 self.is_playing = True
             self._set_play_button_text("Pause" if self.is_playing else "Play")
+        except spotipy.SpotifyException as exc:
+            self.set_status(f"Error {exc.http_status}: {exc.msg}")
+
+    def _on_volume_change(self, _value: str) -> None:
+        if self._volume_updating:
+            return
+        try:
+            volume = int(self._volume_var.get())
+            self.sp.volume(volume)
         except spotipy.SpotifyException as exc:
             self.set_status(f"Error {exc.http_status}: {exc.msg}")
 
