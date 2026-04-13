@@ -24,3 +24,5 @@ python main.py
 ```
 
 The GUI includes Play/Pause, Next, and Previous buttons.
+
+The visualizer now reads Spotify's audio session (Windows desktop app) for real-time peaks.
